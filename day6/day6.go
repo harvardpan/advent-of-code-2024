@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sync"
+	"time"
 )
 
 func main() {
@@ -111,10 +113,18 @@ func part1() {
 	if err := scanner.Err(); err != nil {
 		fmt.Println("Error reading file: ", err)
 	}
+	defer timer("part1")()
 	// We should have the grid and the starting position now. Let's navigate the grid
 	gridCopy := deepCopyGrid(grid)
 	result = walkGrid(gridCopy, posRow, posCol, direction)
 	fmt.Println("The final result is: ", result)
+}
+
+func timer(name string) func() {
+	start := time.Now()
+	return func() {
+		fmt.Printf("%s took %v\n", name, time.Since(start))
+	}
 }
 
 func part2() {
@@ -150,18 +160,29 @@ func part2() {
 	if err := scanner.Err(); err != nil {
 		fmt.Println("Error reading file: ", err)
 	}
+	defer timer("part2")()
+	// Add goroutine to speed up the calculation
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 	// We should have the grid and the starting position now. Let's navigate the grid
 	for rowIndex, row := range grid {
 		for colIndex, char := range row {
 			if char == '.' {
-				gridCopy := deepCopyGrid(grid)
-				gridCopy[rowIndex][colIndex] = '#'
-				if walkGrid(gridCopy, posRow, posCol, direction) == -1 {
-					result++
-					fmt.Println("Placing a barrier at (", rowIndex, ",", colIndex, ") will create an infinite loop.")
-				}
+				wg.Add(1) // add to the wait group
+				go func(rowIndex, colIndex int) {
+					defer wg.Done() // defer the done call
+					gridCopy := deepCopyGrid(grid)
+					gridCopy[rowIndex][colIndex] = '#'
+					if walkGrid(gridCopy, posRow, posCol, direction) == -1 {
+						mu.Lock() // prevent concurrent writes to result
+						result++
+						mu.Unlock()
+						// fmt.Println("Placing a barrier at (", rowIndex, ",", colIndex, ") will create an infinite loop.")
+					}
+				}(rowIndex, colIndex)
 			}
 		}
 	}
+	wg.Wait() // wait for all goroutines to finish
 	fmt.Println("The final result is: ", result)
 }
