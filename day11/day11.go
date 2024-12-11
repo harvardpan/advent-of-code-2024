@@ -22,7 +22,7 @@ type Stone struct {
 
 func main() {
 	part1()
-	// part2()
+	part2()
 }
 
 func getNextNumbers(stoneNumber int) []int {
@@ -60,24 +60,23 @@ func blink(stones map[int]*Stone, currentStone int, stepsRemaining int) *Stone {
 		// for leaf nodes, as stepsRemaining will be 0, and each Stone will have at least one entry
 		return stone
 	}
-	stepsRemaining-- // decrement the steps remaining
 	nextNumbers := getNextNumbers(currentStone)
+	newAggregates := make([]int, stepsRemaining+1)
+	newAggregates[0] = 1 // self at 0-index
 	for _, nextNumber := range nextNumbers {
-		nextStone := blink(stones, nextNumber, stepsRemaining)
-		for i := 0; i < stepsRemaining+1; i++ {
-			if len((*stone).aggregates) <= i+1 {
-				(*stone).aggregates = append((*stone).aggregates, 0) // make sure we have enough space
-			}
-			(*stone).aggregates[i+1] += (*nextStone).aggregates[i] // add the aggregate to the right level
+		nextStone := blink(stones, nextNumber, stepsRemaining-1)
+		for i := 0; i < stepsRemaining; i++ {
+			newAggregates[i+1] += (*nextStone).aggregates[i]
 		}
 	}
+	(*stone).aggregates = newAggregates
 	return stone
 }
 
 func part1() {
 	// https://adventofcode.com/2024/day/11
-	//
-	file, err := os.Open("sampleinput.txt")
+	// Do it 25 times
+	file, err := os.Open("input.txt")
 	if err != nil {
 		fmt.Println("Error opening file:", err)
 		return
@@ -115,6 +114,39 @@ func part1() {
 
 func part2() {
 	// https://adventofcode.com/2024/day/11#part2
-	//
+	// Do it 75 times.
+	file, err := os.Open("input.txt")
+	if err != nil {
+		fmt.Println("Error opening file:", err)
+		return
+	}
+	defer file.Close()
+	defer timer("part2")()
+	result := 0
+	// variables specific to this problem
+	stones := make(map[int]*Stone) // keeps track of all the stones we've "encountered"
+	totalSteps := 75
 
+	// Begin file parsing
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Day-specific code
+		stoneInputs := strings.Split(line, " ")
+		for _, stoneInput := range stoneInputs {
+
+			stoneNumber, _ := strconv.Atoi(stoneInput)
+			stone := blink(stones, stoneNumber, totalSteps)
+			result += (*stone).aggregates[totalSteps]
+		}
+		// Only one line today
+		break
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading file: ", err)
+	}
+	// Post file-processing code.
+
+	fmt.Println("The final result is: ", result)
 }
