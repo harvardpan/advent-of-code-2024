@@ -70,6 +70,7 @@ func timer(name string) func() {
 
 func main() {
 	part1()
+	part2()
 }
 
 func printGrid(grid [][]*Node, path []*PriorityQueueItem) {
@@ -105,7 +106,7 @@ func constructShortestPath(item *PriorityQueueItem) []*PriorityQueueItem {
 	path := make([]*PriorityQueueItem, 0)
 	path = append(path, item)
 	for item != nil && item.priority != 0 {
-		minPriority := math.MaxInt64
+		minPriority := item.priority // the next step should always have a lower priority than the current item
 		var minItem *PriorityQueueItem = nil
 		for _, prevItem := range item.node.prev {
 			if prevItem.priority < minPriority {
@@ -122,7 +123,35 @@ func constructShortestPath(item *PriorityQueueItem) []*PriorityQueueItem {
 	return path
 }
 
-func findShortestPath(grid [][]*Node, pq PriorityQueue, visited map[string]bool, endPosition *Node) []*PriorityQueueItem {
+func constructShortestPaths(item *PriorityQueueItem) [][]*PriorityQueueItem {
+	paths := make([][]*PriorityQueueItem, 0)
+	if item == nil || item.priority == 0 {
+		// terminating condition
+		path := make([]*PriorityQueueItem, 0)
+		path = append(path, item)
+		paths = append(paths, path)
+		return paths
+	}
+
+	minItems := make([]*PriorityQueueItem, 0)
+	for _, prevItem := range item.node.prev {
+		if prevItem.priority < item.priority {
+			minItems = append(minItems, prevItem)
+		}
+	}
+	for _, minItem := range minItems {
+		newPaths := constructShortestPaths(minItem)
+		for _, path := range newPaths {
+			// prepend the current item to the path
+			path = append([]*PriorityQueueItem{item}, path...)
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+func findShortestPath(grid [][]*Node, pq PriorityQueue, visited map[string]bool, endPosition *Node, returnAllPaths bool) [][]*PriorityQueueItem {
+	endItems := make([]*PriorityQueueItem, 0)
 	for pq.Len() > 0 {
 		item := heap.Pop(&pq).(*PriorityQueueItem)
 		if visited[fmt.Sprintf("%d,%d,%d", item.node.x, item.node.y, item.direction)] {
@@ -131,9 +160,8 @@ func findShortestPath(grid [][]*Node, pq PriorityQueue, visited map[string]bool,
 		visited[fmt.Sprintf("%d,%d,%d", item.node.x, item.node.y, item.direction)] = true
 		if item.node.x == endPosition.x && item.node.y == endPosition.y {
 			fmt.Println("Found the end position")
-			// Build up the path by checking prev array for each item's Node
-			// Only add the items in the prev array that have the minimum priority
-			return constructShortestPath(item)
+			endItems = append(endItems, item)
+			continue
 		}
 		// Add the next possible moves to the queue
 		// Up
@@ -213,13 +241,32 @@ func findShortestPath(grid [][]*Node, pq PriorityQueue, visited map[string]bool,
 			})
 		}
 	}
-	return make([]*PriorityQueueItem, 0)
+	paths := make([][]*PriorityQueueItem, 0)
+	minPriority := math.MaxInt64
+	minItems := make([]*PriorityQueueItem, 0)
+	for _, endItem := range endItems {
+		if endItem.priority < minPriority {
+			minPriority = endItem.priority
+			minItems = make([]*PriorityQueueItem, 0)
+			minItems = append(minItems, endItem)
+		} else if endItem.priority == minPriority {
+			minItems = append(minItems, endItem)
+		}
+	}
+	for _, minItem := range minItems {
+		if !returnAllPaths {
+			return [][]*PriorityQueueItem{constructShortestPath(minItem)}
+		}
+
+		paths = append(paths, constructShortestPaths(minItem)...)
+	}
+	return paths
 }
 
 func part1() {
 	// https://adventofcode.com/2024/day/16
 	// Find shortest path through maze - Dijsktra's algorithm
-	file, err := os.Open("sampleinput2.txt")
+	file, err := os.Open("input.txt")
 	if err != nil {
 		fmt.Println("Error opening file:", err)
 		return
@@ -263,10 +310,68 @@ func part1() {
 	}
 	heap.Push(&pq, item)
 	visited := make(map[string]bool)
-	path := findShortestPath(grid, pq, visited, endPosition)
+	path := findShortestPath(grid, pq, visited, endPosition, false)[0]
 	if len(path) > 0 {
 		result = path[0].priority
 	}
 	printGrid(grid, path)
+	fmt.Println("The final result is: ", result)
+}
+
+func part2() {
+	// https://adventofcode.com/2024/day/16#part2
+	// Find all the shortest paths through the maze, and get the locations
+	file, err := os.Open("input.txt")
+	if err != nil {
+		fmt.Println("Error opening file:", err)
+		return
+	}
+	defer file.Close()
+	defer timer("part2")()
+	result := 0
+	// variables specific to this problem
+	grid := make([][]*Node, 0)
+	var startPosition, endPosition *Node
+
+	// Begin file parsing
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		row := make([]*Node, 0)
+		// Day-specific code
+		for colIndex, char := range line {
+			node := &Node{x: colIndex, y: len(grid), content: char, prev: make([]*PriorityQueueItem, 0)}
+			row = append(row, node)
+			if char == 'S' {
+				startPosition = node
+			} else if char == 'E' {
+				endPosition = node
+			}
+		}
+		grid = append(grid, row)
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading file: ", err)
+	}
+	// Post file-processing code.
+	pq := make(PriorityQueue, 0) // priority queue makes dijkstra much easier
+	heap.Init(&pq)
+	// Add the start node
+	item := &PriorityQueueItem{
+		node:      startPosition,
+		direction: 90, // the start direction is east
+		priority:  0,
+	}
+	heap.Push(&pq, item)
+	visited := make(map[string]bool)
+	paths := findShortestPath(grid, pq, visited, endPosition, true)
+	uniqueLocations := make(map[string]bool)
+	for _, path := range paths {
+		for _, item := range path {
+			uniqueLocations[fmt.Sprintf("%d,%d", item.node.x, item.node.y)] = true
+		}
+	}
+	result = len(uniqueLocations)
 	fmt.Println("The final result is: ", result)
 }
